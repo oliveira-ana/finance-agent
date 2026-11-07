@@ -3,7 +3,8 @@
 | Campo | Valor |
 |---|---|
 | Projeto | finance-agent |
-| Versão | 0.2 |
+| Versão | 0.3 |
+| Design | [RF01-design.md](RF01-design.md) |
 | Status | Em refinamento |
 | Stack | Python 3.10+ · AWS Strands Agents (`strands-agents[openai]`) · OpenAI · `.env` |
 | Execução | Local, no terminal (cmd do Windows) |
@@ -135,6 +136,16 @@ Tudo que não está marcado com ✅ é **negado**.
 5. Se a operação precisar de aprovação, ela **nunca** é executada sem passar por este fluxo — nem se o usuário ou a IA tentarem pular essa etapa.
 6. Erros de PIN do aprovador contam para o bloqueio do aprovador (RN12).
 
+### RF01.9 — Memória da conversa (sessão)
+1. Cada login abre uma **sessão nova** de conversa. O agente lembra do que foi dito apenas enquanto aquele login estiver aberto.
+2. A conversa é salva em arquivo local (`dados/sessoes/`), com os dados pessoais mascarados, e fica guardada como histórico por 90 dias (RN15).
+3. No `logout` ou no `sair`, a sessão é encerrada. O próximo login começa sem memória das conversas anteriores.
+
+### RF01.10 — Direitos do titular (LGPD)
+1. **`meus dados`:** o cliente vê os dados pessoais dele (nome, CPF, e-mail, telefone e conta) completos. Essa resposta é gerada pelo código e **não passa pela OpenAI**.
+2. **`apagar meu histórico`:** depois de confirmar, o sistema apaga os arquivos de conversa do cliente e reinicia a sessão atual. Movimentações e auditoria **não** são apagadas, porque são obrigação legal/regulatória (RN16).
+3. As duas ações ficam registradas na auditoria.
+
 ## 6. Regras de negócio
 
 | ID | Regra |
@@ -153,6 +164,8 @@ Tudo que não está marcado com ✅ é **negado**.
 | RN12 | Depois de P04 erros seguidos de PIN, o usuário fica bloqueado por P05 minutos. |
 | RN13 | Toda operação (feita, negada, rejeitada ou com login errado) gera um registro de auditoria. |
 | RN14 | O aprovador não faz login sozinho nem consulta contas; ele só informa as credenciais durante o fluxo de aprovação (RF01.8). |
+| RN15 | Retenção: conversas (sessões) por **90 dias**, auditoria por **5 anos**. A limpeza é automática, ao iniciar o programa. |
+| RN16 | CPF, e-mail e telefone aparecem **mascarados** nas respostas do agente, no que vai para a OpenAI, nas sessões salvas e na auditoria. A exceção é o comando `meus dados` do próprio titular. |
 
 ## 7. Parâmetros configuráveis
 
@@ -191,7 +204,7 @@ A IA **interpreta** o pedido, mas **quem decide se pode ou não é o código**. 
 | `sacar(valor)` | Cliente | Saca da própria conta; chama a aprovação se fora do padrão |
 | `estornar(conta, valor, motivo, transacao_ref=None)` | Atendente | Depósito de estorno; chama a aprovação se acima do limite |
 
-Para o cliente, o parâmetro `conta` é ignorado: sempre vale a conta da sessão (RN04).
+Para o cliente, sempre vale a conta da sessão (RN04). Se for informada outra conta, a tool responde "operação não permitida" e registra na auditoria (CA04).
 
 ## 10. Dados (arquivos JSON locais)
 
@@ -199,7 +212,7 @@ Pasta `dados/` (fora do git, no `.gitignore`):
 
 | Arquivo | Conteúdo |
 |---|---|
-| `usuarios.json` | usuário, nome, perfil, hash do PIN, salt, tentativas erradas, bloqueado até |
+| `usuarios.json` | usuário, nome, CPF, e-mail, telefone (fictícios), perfil, hash do PIN, salt, tentativas erradas, bloqueado até |
 | `contas.json` | número da conta, usuário titular, saldo (centavos) |
 | `movimentacoes.json` | id, conta, data/hora, tipo (`DEPOSITO`, `SAQUE`, `ESTORNO`), valor, saldo depois, feito por, aprovado por, motivo, transação de referência |
 | `auditoria.jsonl` | uma linha por evento: data/hora, usuário, perfil, ação, conta, valor, resultado (`OK`, `NEGADO`, `REJEITADO`, `LOGIN_FALHOU`, `BLOQUEADO`), detalhe |
@@ -261,4 +274,3 @@ O finance-agent já tem o esqueleto do chat; este RF evolui esses arquivos:
 | PA03 | No estorno, a transação de referência deve ser obrigatória? | Opcional |
 | PA04 | Cliente pode ter mais de uma conta? | Não, uma conta por cliente nesta versão |
 | PA06 | Deve haver limite de valor por depósito do cliente? | Sem limite nesta versão |
-| PA07 | O histórico da conversa deve ser salvo entre sessões (FileSessionManager)? | Não salvar conversa de dados bancários; manter só a auditoria |

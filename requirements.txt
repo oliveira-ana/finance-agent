@@ -1,3 +1,5 @@
-strands-agents[openai]>=1.64
-python-dotenv>=1.0
-pytest>=8
+strands-agents[openai]==1.64.0
+python-dotenv==1.2.4
+tzdata==2026.6
+pytest==9.2.0
+pip-audit==2.10.1
