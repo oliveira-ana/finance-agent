@@ -9,6 +9,7 @@ from app.agente import criar_agente
 from app.aprovacao import Terminal, TerminalConsole
 from app.auth import LoginRecusado
 from app.config import carregar_config
+from app.repositorio import BaseCorrompida
 from app.servicos import Servicos, montar_servicos
 from app.sessao import SessaoUsuario, nova_sessao
 
@@ -121,13 +122,17 @@ def main() -> int:
     if not srv.repo.existe_base():
         print(f"Base de dados não encontrada em {config.dados_dir}. Rode primeiro: python -m app.carga_inicial")
         return 1
-    lgpd.aplicar_retencao(srv)
     terminal = TerminalConsole()
-    print("Finance Agent — chat bancário. Digite 'sair' para encerrar.")
-    while True:
-        sessao = fazer_login(srv)
-        if sessao is None or conversar(sessao, srv, terminal):
-            break
+    try:
+        lgpd.aplicar_retencao(srv)
+        print("Finance Agent — chat bancário. Digite 'sair' para encerrar.")
+        while True:
+            sessao = fazer_login(srv)
+            if sessao is None or conversar(sessao, srv, terminal):
+                break
+    except BaseCorrompida as erro:
+        print(erro)
+        return 1
     print("Até logo!")
     return 0
 

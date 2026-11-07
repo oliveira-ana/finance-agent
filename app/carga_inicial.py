@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import getpass
 import re
+import shutil
 import sys
 import uuid
 from datetime import datetime, timedelta
@@ -13,6 +14,7 @@ from app.auditoria import ARQUIVO_AUDITORIA, Auditoria
 from app.auth import ITERACOES_PADRAO, gerar_hash
 from app.config import Config, carregar_config
 from app.repositorio import CONTAS, MOVIMENTACOES, USUARIOS, Repositorio
+from app.sessao import ARQUIVO_INDICE
 
 FORMATO_PIN = re.compile(r"^\d{4,6}$")
 
@@ -113,6 +115,10 @@ def gerar_base(
         for u in USUARIOS_EXEMPLO
         if u["conta"]
     ]
+    if forcar:
+        # Conversas da base antiga não podem sobreviver à recriação; a auditoria é mantida (obrigação legal).
+        shutil.rmtree(config.dir_sessoes, ignore_errors=True)
+        repo.gravar(ARQUIVO_INDICE, [])
     repo.gravar(USUARIOS, usuarios)
     repo.gravar(CONTAS, contas)
     repo.gravar(MOVIMENTACOES, movimentacoes)
