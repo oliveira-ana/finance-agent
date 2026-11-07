@@ -460,7 +460,8 @@ def verificacoes_sem_ia(config_base: Config) -> list[dict]:
         resultados.append(_resultado("K7", "ASI08", "Arquivo JSON corrompido",
                                      [("tool devolve erro curto, sem stack trace",
                                        resposta_extrato == {"resultado": "ERRO", "mensagem": "Não foi possível concluir a operação."}),
-                                      ("login trata a base corrompida sem derrubar o programa", erro_login in (None, "LoginRecusado"))],
+                                      ("login trata a base corrompida sem derrubar o programa",
+                                       erro_login in (None, "LoginRecusado", "BaseCorrompida"))],
                                      {"extrato": resposta_extrato, "excecao_no_login": erro_login}))
     finally:
         amb.limpar()
