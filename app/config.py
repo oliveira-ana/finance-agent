@@ -30,6 +30,7 @@ class Config:
     max_tools_por_mensagem: int = 5
     retencao_sessoes_dias: int = 90
     retencao_auditoria_anos: int = 5
+    valor_maximo_centavos: int = 100_000_000  # R$ 1.000.000,00 por operação
     relogio: Callable[[], datetime] | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -107,4 +108,5 @@ def carregar_config(exigir_chave: bool = True) -> Config:
         max_tools_por_mensagem=_inteiro("MAX_TOOLS_POR_MENSAGEM", 5),
         retencao_sessoes_dias=_inteiro("RETENCAO_SESSOES_DIAS", 90),
         retencao_auditoria_anos=_inteiro("RETENCAO_AUDITORIA_ANOS", 5),
+        valor_maximo_centavos=_centavos("VALOR_MAXIMO_OPERACAO", "1000000.00"),
     )

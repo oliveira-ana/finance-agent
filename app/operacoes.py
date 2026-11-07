@@ -17,7 +17,9 @@ if TYPE_CHECKING:
 TIPOS = {"DEPOSITO": "Depósito", "SAQUE": "Saque", "ESTORNO": "Estorno"}
 MOTIVO_MIN_CARACTERES = 10
 EXTRATO_MAX_ITENS = 50
-_MILHAR = re.compile(r"^\d{1,3}(\.\d{3})+$")
+_MILHAR = re.compile(r"^[0-9]{1,3}(\.[0-9]{3})+(,[0-9]{1,2})?$")
+_VALOR = re.compile(r"^(?:[0-9]{1,3}(?:\.[0-9]{3})+(?:,[0-9]{1,2})?|[0-9]+(?:,[0-9]{1,2})?|[0-9]+\.[0-9]{1,2})$")
+MSG_VALOR_INVALIDO = "Valor inválido. Use, por exemplo, 150,00."
 
 
 class ErroOperacao(Exception):
@@ -29,20 +31,18 @@ class AprovacaoNecessaria(ErroOperacao):
 
 
 def para_centavos(valor: str | int | float) -> int:
-    """RN01: aceita '150', '150,50', '1.234,56', 'R$ 200' e devolve centavos (int)."""
+    """RN01: aceita só formatos de moeda brasileira ('150', '150,50', '1.234,56', 'R$ 200') e devolve centavos."""
     texto = str(valor).strip().replace("R$", "").replace(" ", "")
-    if "," in texto:
+    if not _VALOR.match(texto):
+        raise ErroOperacao(MSG_VALOR_INVALIDO)
+    if "," in texto or _MILHAR.match(texto):
         texto = texto.replace(".", "").replace(",", ".")
-    elif _MILHAR.match(texto):
-        texto = texto.replace(".", "")
     try:
         numero = Decimal(texto)
     except InvalidOperation:
-        raise ErroOperacao("Valor inválido. Use, por exemplo, 150,00.") from None
-    if not numero.is_finite() or numero <= 0:
+        raise ErroOperacao(MSG_VALOR_INVALIDO) from None
+    if numero <= 0:
         raise ErroOperacao("O valor deve ser maior que zero.")
-    if numero != numero.quantize(Decimal("0.01")):
-        raise ErroOperacao("O valor pode ter no máximo 2 casas decimais.")
     return int(numero * 100)
 
 
@@ -67,6 +67,12 @@ class Banco:
         self.repo = repo
         self.config = config
 
+    def _validar_valor(self, valor: int) -> None:
+        if isinstance(valor, bool) or not isinstance(valor, int) or valor <= 0:
+            raise ErroOperacao("O valor deve ser maior que zero.")
+        if valor > self.config.valor_maximo_centavos:
+            raise ErroOperacao(f"O valor máximo por operação é {formatar_reais(self.config.valor_maximo_centavos)}.")
+
     def consultar_conta(self, conta: str) -> dict:
         registro = self.repo.buscar_conta(conta)
         if registro is None:
@@ -83,32 +89,49 @@ class Banco:
         itens.sort(key=_data_hora, reverse=True)
         return inicio, fim, itens[:EXTRATO_MAX_ITENS]
 
-    def _saques(self, conta: str) -> list[dict]:
-        return sorted((m for m in self.repo.movimentacoes(conta) if m["tipo"] == "SAQUE"), key=_data_hora)
+    def _acumulado_hoje_sem_aprovacao(self, conta: str, tipo: str) -> int:
+        """ACH-02: soma do dia que ainda não passou por aprovador, para impedir o fracionamento."""
+        hoje = self.config.agora().date()
+        return sum(
+            m["valor_centavos"]
+            for m in self.repo.movimentacoes(conta)
+            if m["tipo"] == tipo and _data_hora(m).date() == hoje and not m.get("aprovado_por")
+        )
 
     def motivo_aprovacao_saque(self, conta: str, valor: int) -> str | None:
-        """RN05/RN06: devolve por que o saque precisa de aprovador, ou None."""
-        saques = self._saques(conta)
-        if len(saques) < self.config.saque_min_historico:
+        """RN05/RN06: devolve por que o saque precisa de aprovador, ou None.
+
+        Compara o valor somado aos saques de hoje sem aprovação. A média usa só saques de dias anteriores.
+        """
+        hoje = self.config.agora().date()
+        anteriores = sorted(
+            (m for m in self.repo.movimentacoes(conta) if m["tipo"] == "SAQUE" and _data_hora(m).date() < hoje),
+            key=_data_hora,
+        )
+        total = valor + self._acumulado_hoje_sem_aprovacao(conta, "SAQUE")
+        sufixo = f", somando os saques de hoje ({formatar_reais(total)})" if total != valor else ""
+        if len(anteriores) < self.config.saque_min_historico:
             limite = self.config.saque_limite_sem_historico_centavos
-            if valor > limite:
+            if total > limite:
                 return (
                     f"cliente com menos de {self.config.saque_min_historico} saques no histórico "
-                    f"e valor acima de {formatar_reais(limite)}"
+                    f"e valor acima de {formatar_reais(limite)}{sufixo}"
                 )
             return None
-        recentes = [m["valor_centavos"] for m in saques[-self.config.saque_qtd_media :]]
+        recentes = [m["valor_centavos"] for m in anteriores[-self.config.saque_qtd_media :]]
         media = Decimal(sum(recentes)) / len(recentes)
-        if valor > self.config.saque_multiplicador_media * media:
-            vezes = f"{Decimal(valor) / media:.1f}".replace(".", ",")
-            return f"{vezes}x a média dos últimos {len(recentes)} saques ({formatar_reais(int(media))})"
+        if total > self.config.saque_multiplicador_media * media:
+            vezes = f"{Decimal(total) / media:.1f}".replace(".", ",")
+            return f"{vezes}x a média dos últimos {len(recentes)} saques ({formatar_reais(int(media))}){sufixo}"
         return None
 
-    def motivo_aprovacao_estorno(self, valor: int) -> str | None:
-        """RN08."""
+    def motivo_aprovacao_estorno(self, conta: str, valor: int) -> str | None:
+        """RN08, somando os estornos de hoje na conta que não passaram por aprovador."""
         limite = self.config.estorno_limite_centavos
-        if valor > limite:
-            return f"estorno acima de {formatar_reais(limite)}"
+        total = valor + self._acumulado_hoje_sem_aprovacao(conta, "ESTORNO")
+        if total > limite:
+            sufixo = f", somando os estornos de hoje nesta conta ({formatar_reais(total)})" if total != valor else ""
+            return f"estorno acima de {formatar_reais(limite)}{sufixo}"
         return None
 
     def _movimentar(
@@ -121,6 +144,7 @@ class Banco:
         motivo: str | None = None,
         transacao_ref: str | None = None,
     ) -> dict:
+        self._validar_valor(valor)
         saldo = self.consultar_conta(conta)["saldo_centavos"]
         novo_saldo = saldo - valor if tipo == "SAQUE" else saldo + valor
         if novo_saldo < 0:
@@ -142,11 +166,13 @@ class Banco:
 
     def depositar(self, sessao: SessaoUsuario, valor: int) -> dict:
         exigir(sessao, "depositar")
+        self._validar_valor(valor)
         return self._movimentar(sessao, sessao.conta, "DEPOSITO", valor)
 
     def verificar_saque(self, sessao: SessaoUsuario, valor: int) -> str | None:
-        """Confere permissão e saldo (RN03) e devolve o motivo de aprovação, se houver."""
+        """Confere permissão, valor e saldo (RN03) e devolve o motivo de aprovação, se houver."""
         exigir(sessao, "sacar")
+        self._validar_valor(valor)
         if self.consultar_conta(sessao.conta)["saldo_centavos"] < valor:
             raise ErroOperacao("Saldo insuficiente.")
         return self.motivo_aprovacao_saque(sessao.conta, valor)
@@ -158,12 +184,13 @@ class Banco:
         return self._movimentar(sessao, sessao.conta, "SAQUE", valor, aprovado_por=aprovado_por)
 
     def verificar_estorno(self, sessao: SessaoUsuario, conta: str, valor: int, motivo: str | None) -> str | None:
-        """Confere permissão, conta e motivo (RN07) e devolve o motivo de aprovação, se houver."""
+        """Confere permissão, valor, conta e motivo (RN07) e devolve o motivo de aprovação, se houver."""
         exigir(sessao, "estornar")
+        self._validar_valor(valor)
         self.consultar_conta(conta)
         if len((motivo or "").strip()) < MOTIVO_MIN_CARACTERES:
             raise ErroOperacao(f"Informe o motivo do estorno (mínimo de {MOTIVO_MIN_CARACTERES} caracteres).")
-        return self.motivo_aprovacao_estorno(valor)
+        return self.motivo_aprovacao_estorno(conta, valor)
 
     def estornar(
         self,
