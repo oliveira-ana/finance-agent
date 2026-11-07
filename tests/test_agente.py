@@ -79,12 +79,12 @@ def test_limite_de_tools_por_mensagem(srv, login, terminal):
 
 def test_hook_zera_contador_a_cada_mensagem(srv, login):
     hook = ProtecoesHook(2, login("maria"), srv.auditoria)
-    eventos = [SimpleNamespace(tool_use={"name": "sacar", "input": {"valor": "1"}}, cancel_tool=False) for _ in range(3)]
+    eventos = [SimpleNamespace(tool_use={"name": "consultar_saldo", "input": {}}, cancel_tool=False) for _ in range(3)]
     for evento in eventos:
         hook.antes_da_tool(evento)
     assert [e.cancel_tool for e in eventos] == [False, False, MSG_LIMITE]
     hook.zerar_contador(None)
-    novo = SimpleNamespace(tool_use={"name": "sacar", "input": {}}, cancel_tool=False)
+    novo = SimpleNamespace(tool_use={"name": "consultar_saldo", "input": {}}, cancel_tool=False)
     hook.antes_da_tool(novo)
     assert novo.cancel_tool is False
 
