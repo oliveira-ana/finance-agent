@@ -25,6 +25,10 @@ def gravar_atomico(caminho: Path, conteudo: str) -> None:
         raise
 
 
+class BaseCorrompida(RuntimeError):
+    pass
+
+
 class Repositorio:
     def __init__(self, dados_dir: Path):
         self.dir = Path(dados_dir)
@@ -39,8 +43,14 @@ class Repositorio:
         caminho = self.caminho(nome)
         if not caminho.exists():
             return []
-        with caminho.open(encoding="utf-8") as arquivo:
-            return json.load(arquivo)
+        try:
+            with caminho.open(encoding="utf-8") as arquivo:
+                return json.load(arquivo)
+        except json.JSONDecodeError:
+            raise BaseCorrompida(
+                f"O arquivo {caminho} está corrompido. Restaure um backup ou recrie a base com: "
+                "python -m app.carga_inicial --forcar"
+            ) from None
 
     def gravar(self, nome: str, dados: list) -> None:
         gravar_atomico(self.caminho(nome), json.dumps(dados, ensure_ascii=False, indent=2))

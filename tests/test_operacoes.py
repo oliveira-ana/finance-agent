@@ -43,8 +43,8 @@ def test_ca18_cliente_sem_historico(srv):
 
 
 def test_rn08_limite_do_estorno(srv):
-    assert srv.banco.motivo_aprovacao_estorno(100_000) is None
-    assert srv.banco.motivo_aprovacao_estorno(100_001) == "estorno acima de R$ 1.000,00"
+    assert srv.banco.motivo_aprovacao_estorno("0002-2", 100_000) is None
+    assert srv.banco.motivo_aprovacao_estorno("0002-2", 100_001) == "estorno acima de R$ 1.000,00"
 
 
 def test_ca05_saldo_insuficiente(srv, login):

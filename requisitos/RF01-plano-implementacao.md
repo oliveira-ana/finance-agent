@@ -250,8 +250,8 @@ Status: `[ ]` pendente · `[~]` em andamento · `[x]` concluído · `[A]` aprova
 ## 6. Checklists de segurança (usados pelo AG-SEC)
 
 ### 6.1 OWASP Top 10 para Aplicações Agênticas
-- [ ] ASI01 Goal Hijack: ataques diretos e CA16 passam com a chave real; **ACH-01 (alto) em aberto**: injeção indireta pelo motivo do extrato
-- [ ] ASI02 Tool Misuse: tools mínimas, limite de 5 tools por mensagem e uma tool por vez funcionam; **ACH-02 (médio) em aberto**: fracionamento de saque/estorno; ACH-03 (baixo): formatos de valor
+- [x] ASI01 Goal Hijack: ataques diretos, CA16 e injeção indireta (A3) passam após a correção do ACH-01 (intenção explícita); risco residual aceito em A5 (texto colado pelo próprio atendente)
+- [x] ASI02 Tool Misuse: tools mínimas, limite de 5 tools por mensagem, uma tool por vez, limite acumulado diário (ACH-02) e validação estrita de valores com teto (ACH-03)
 - [x] ASI03 Identity & Privilege Abuse: identidade só pela closure; tools por perfil; aprovador via `getpass`; solicitante ≠ aprovador
 - [x] ASI04 Supply Chain: versões fixadas; `pip-audit` sem vulnerabilidades conhecidas
 - [x] ASI05 Code Execution: sem `eval`/`exec`/`subprocess` (conferido com busca no código)
@@ -282,6 +282,7 @@ O AG-TL acrescenta uma linha a cada evento relevante: início/fim de fase, gate,
 | 07/11/2026 | 0–4 | Ana aprovou o G0 e pediu para seguir todas as fases sem perguntar | G1–G3 dispensados; testes manuais com a chave ficam para o G4 | Ana |
 | 07/11/2026 | 1–4 | Fases 1 a 4 implementadas: 15 módulos em `app/` (inclui `servicos.py`, que não estava no design) e 93 testes passando sem chamar a OpenAI, com modelo simulado para o agente completo. `pip-audit` sem vulnerabilidades conhecidas. Base fictícia criada com `carga_inicial --demo`. Design e RF01 ajustados: CA04 nega e audita quando o cliente informa outra conta; uma tool por vez (`SequentialToolExecutor`); retorno das tools usa `resultado` | Ana fazendo o teste manual com a chave real (F2.11, F3.9, F4.7) e depois o G4 | AG-TL |
 | 07/11/2026 | 4 | Teste adversarial OWASP com a chave real (`seguranca/teste_adversarial.py`, 23 cenários × 3 rodadas + 8 verificações de código): 27 passaram, 4 falharam. Achados: ACH-01 alto (injeção indireta), ACH-02 médio (fracionamento), ACH-03/04/05 baixos. Ver [relatório](RF01-relatorio-seguranca.md) | G4 bloqueado até corrigir ACH-01 e ACH-02 e reexecutar o script | AG-SEC |
+| 07/11/2026 | 4 | PR #1 mergeado com a correção do ACH-01. ACH-02 a ACH-05 e 2 bugs do Devin Review corrigidos na branch `devin/1794083000-correcoes-achados` (120 testes). Reteste adversarial (3 rodadas): A3 e B2 passam; A5 vira risco residual aceito | Aguardando G4 da Ana | AG-SEC |
 
 ## 8. Riscos
 
